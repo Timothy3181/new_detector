@@ -1,0 +1,211 @@
+#include <armor_detector/tasks/yolo.hpp>
+
+namespace pka {
+
+YOLO::YOLO(const std::string& model_path, const LightParams& light_params, const int threshold, const bool fix, const float conf, const float nms) {
+    // init core
+    this->core = ov::Core();
+
+    // model setting
+    auto model = core.read_model(model_path);
+    auto ppp = new ov::preprocess::PrePostProcessor(model);
+    ppp->input().tensor().set_element_type(ov::element::u8).set_layout("NHWC").set_color_format(ov::preprocess::ColorFormat::RGB);
+    ppp->input().preprocess().convert_element_type(ov::element::f32).scale({255., 255., 255.});
+    ppp->input().model().set_layout("NCHW");
+    ppp->output().tensor().set_element_type(ov::element::f32);
+    model = ppp->build();
+    this->compiled_model = core.compile_model(model, "CPU", ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY));
+
+    // init tradition check
+    this->light_params = light_params;
+    this->threshold = threshold;
+    this->fix_points = fix;
+    this->conf_threshold = conf;
+    this->nms_threshold = nms;
+}
+
+bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
+    // get 4 key points
+    auto lt = armor.points.at(0);
+    auto rt = armor.points.at(1);
+    auto rb = armor.points.at(2);
+    auto lb = armor.points.at(3);
+
+    // get l & f center
+    auto lc = (lt + lb) / 2;
+    auto rc = (rt + rb) / 2;
+
+    // image geometry calculation
+    auto c = armor.center;
+    auto lt2c = c - lt;
+    auto lb2c = c - lb;
+    auto rt2c = c - rt;
+    auto rb2c = c - rb;
+    auto nlt = lt - 0.35 * lt2c;
+    auto nlb = lb - 0.35 * lb2c;
+    auto nrt = rt - 0.35 * rt2c;
+    auto nrb = rb - 0.35 * rb2c;
+
+    // get roi
+    std::vector<cv::Point2f> n_points = {nlt, nrt, nrb, nlb};
+    auto rrect = cv::minAreaRect(n_points);
+    cv::Rect rect = rrect.boundingRect();
+
+    // check if roi is available
+    if (rect.x < 0 || rect.y < 0 || rect.x + rect.width > image.cols || rect.y + rect.height > image.rows) {
+        return false;
+    }
+
+    // get roi
+    cv::Mat roi = image(rect);
+
+    // to binary
+    cv::Mat gray_roi;
+    cv::cvtColor(roi, gray_roi, cv::COLOR_RGB2GRAY);
+    cv::Mat fixed_roi;
+    cv::threshold(gray_roi, fixed_roi, this->threshold, 255, cv::THRESH_BINARY);
+
+    // find lights
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(fixed_roi, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    std::vector<Light> lights;
+    for (auto& contour : contours) {
+        // init light
+        if (contour.size() < 6) continue;
+        auto light = Light(contour, cv::Point2f(rect.x, rect.y));
+
+        // check light
+        float ratio = light.height / light.width;
+        bool ratio_ok = this->light_params.min_ratio < ratio && ratio < this->light_params.max_ratio;
+        bool angle_ok = light.tilt_angle < light_params.max_angle;
+        if (ratio_ok && angle_ok) {
+            lights.emplace_back(light);
+        }
+    }
+
+    float min_left_light_dist = std::numeric_limits<float>::max();
+    float min_right_light_dist = std::numeric_limits<float>::max();
+    Light selected_left;
+    Light selected_right;
+    for (auto& light : lights)  {
+        // select available light
+        auto left_dist_error = cv::norm(light.center - lc);
+        // left light
+        if (left_dist_error < min_left_light_dist) {
+            selected_left = light;
+            min_left_light_dist = left_dist_error;
+        }
+        // right light
+        auto right_dist_error = cv::norm(light.center - rc);
+        if (right_dist_error < min_right_light_dist) {
+            selected_right = light;
+            min_right_light_dist = right_dist_error;
+        }
+    }
+
+    // fix key points
+    std::vector<cv::Point2f> fix_points = {
+        selected_left.top, selected_right.top, selected_right.bottom, selected_left.bottom
+    };
+    armor.points = fix_points;
+    
+    return true;
+}
+
+std::vector<Armor> YOLO::detect(cv::Mat& image) {
+    // init armors
+    std::vector<Armor> armors;
+
+    // fix image
+    double scale = 0;
+    cv::Mat fixed_img = resizeImg(image, scale);
+
+    // set input tensor
+    ov::Tensor input_tensor(
+        this->compiled_model.input().get_element_type(),
+        this->compiled_model.input().get_shape(),
+        static_cast<uchar*>(fixed_img.data)
+    );
+
+    // inference
+    auto infer_request = this->compiled_model.create_infer_request();
+    infer_request.set_input_tensor(input_tensor);
+    infer_request.infer();
+
+    // set output tensor
+    ov::Tensor output_tensor = infer_request.get_output_tensor();
+    ov::Shape output_shape = output_tensor.get_shape();
+    cv::Mat output(output_shape[1], output_shape[2], CV_32F, output_tensor.data());
+
+    // process data
+    std::vector<float> confs;
+    std::vector<cv::Rect> boxes;
+    std::vector<int> color_ids;
+    std::vector<int> symbol_ids;
+    std::vector<std::vector<cv::Point2f>> all_key_points;
+    for (int i = 0; i < output.rows; i++) {
+        // confidence
+        auto conf = output.at<float>(i, 8);
+        conf = sigmoid(conf);
+        if (conf < this->conf_threshold) continue;
+
+        // color and symbols
+        cv::Mat color_vec = output.row(i).colRange(9, 13);
+        cv::Mat symbol_vec = output.row(i).colRange(13, 22);
+        cv::Point color_id, symbol_id;
+        int _color_id, _symbol_id;
+        double color_conf, symbol_conf;
+        cv::minMaxLoc(color_vec, NULL, &color_conf, NULL, &color_id);
+        cv::minMaxLoc(symbol_vec, NULL, &symbol_conf, NULL, &symbol_id);
+        _color_id = color_id.x;
+        _symbol_id = symbol_id.x;
+
+        // key points
+        // 需要恢复比例
+        std::vector<cv::Point2f> key_points;
+        key_points.push_back(cv::Point2f(output.at<float>(i, 0) / scale, output.at<float>(i, 1) / scale));
+        key_points.push_back(cv::Point2f(output.at<float>(i, 6) / scale, output.at<float>(i, 7) / scale));
+        key_points.push_back(cv::Point2f(output.at<float>(i, 4) / scale, output.at<float>(i, 5) / scale));
+        key_points.push_back(cv::Point2f(output.at<float>(i, 2) / scale, output.at<float>(i, 3) / scale));
+
+        // build box
+        float min_x = key_points.at(0).x;
+        float max_x = key_points.at(0).x;
+        float min_y = key_points.at(0).y;
+        float max_y = key_points.at(0).y;
+        for (size_t j = 1; j < key_points.size(); j++) {
+            if (key_points.at(j).x < min_x) min_x = key_points.at(j).x;
+            if (key_points.at(j).x > max_x) max_x = key_points.at(j).x;
+            if (key_points.at(j).y < min_y) min_y = key_points.at(j).y;
+            if (key_points.at(j).y > max_y) max_y = key_points.at(j).y;
+        }
+        cv::Rect rect(min_x, min_y, max_x - min_x, max_y - min_y);
+
+        // add to vector
+        confs.emplace_back(conf);
+        boxes.emplace_back(rect);
+        color_ids.emplace_back(_color_id);
+        symbol_ids.emplace_back(_symbol_id);
+        all_key_points.emplace_back(key_points);
+    }
+
+    // nms
+    std::vector<int> indices;
+    cv::dnn::NMSBoxes(boxes, confs, this->conf_threshold, this->nms_threshold, indices);
+
+    // construct armor
+    for (const auto& ind : indices) {
+        Armor armor(color_ids[ind], symbol_ids[ind], confs[ind], all_key_points[ind]);
+        
+        // fix points
+        if (this->fix_points) {
+            this->fixPoints(armor, image);
+        }
+
+        armors.emplace_back(armor);
+    }
+
+    return armors;
+}
+
+}
