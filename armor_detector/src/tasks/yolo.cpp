@@ -2,7 +2,7 @@
 
 namespace pka {
 
-YOLO::YOLO(const std::string& model_path, const LightParams& light_params, const int threshold, const bool fix, const float conf, const float nms) {
+YOLO::YOLO(const std::string& model_path, const LightParams& light_params, const int threshold, const bool fix, const float conf, const float nms, const Color color) {
     // init core
     this->core = ov::Core();
 
@@ -22,6 +22,7 @@ YOLO::YOLO(const std::string& model_path, const LightParams& light_params, const
     this->fix_points = fix;
     this->conf_threshold = conf;
     this->nms_threshold = nms;
+    this->detect_color = color;
 }
 
 bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
@@ -202,7 +203,7 @@ std::vector<Armor> YOLO::detect(cv::Mat& image) {
             this->fixPoints(armor, image);
         }
 
-        armors.emplace_back(armor);
+        if (armor.color == this->detect_color) armors.emplace_back(armor);
     }
 
     return armors;

@@ -155,9 +155,9 @@ std::vector<Armor> Tradition::matchLights(std::vector<Light>& lightbars, cv::Mat
 
 std::vector<Armor> Tradition::detect(cv::Mat& image) {
     // 1. deal with raw image
-    auto binary_img = this->img_preprocess(image);
+    this->binary_img = this->img_preprocess(image);
     // 2. get lightbars
-    auto lightbars = this->findLightBars(binary_img, image);
+    auto lightbars = this->findLightBars(this->binary_img, image);
     // 3. match lights as armors
     return this->matchLights(lightbars, image);
 }

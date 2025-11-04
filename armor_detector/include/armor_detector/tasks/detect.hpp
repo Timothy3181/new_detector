@@ -18,6 +18,8 @@ public:
     
     std::vector<Armor> detect(cv::Mat& image) override;
 
+    cv::Mat binary_img;
+
 private:
     cv::Mat img_preprocess(cv::Mat& image) noexcept;
     std::vector<Light> findLightBars(cv::Mat& binary_image, cv::Mat& rgb_image) noexcept;
@@ -27,8 +29,7 @@ private:
 
     bool check_light_geometry(Light& light) noexcept;
     ArmorType check_armor_geometry(const Light& l1, const Light& l2) noexcept;
-    
-    Color detect_color;
+
     ArmorParams armor_params;
 };
 

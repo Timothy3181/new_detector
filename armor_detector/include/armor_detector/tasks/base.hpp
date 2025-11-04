@@ -17,9 +17,12 @@ public:
 
     virtual std::vector<Armor> detect(cv::Mat& image) = 0;
 
+    void setDetectColor(Color color) { this->detect_color = color; }
+
 protected:
     int threshold;
     LightParams light_params;
+    Color detect_color;
 }; 
 
 }

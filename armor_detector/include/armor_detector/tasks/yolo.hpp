@@ -18,7 +18,7 @@ class YOLO : public Detector {
 public:
     YOLO() = default;
     YOLO(const std::string& model_path, const LightParams& light_params, const int threshold, const bool fix,
-    const float conf, const float nms);
+    const float conf, const float nms, const Color color);
 
     std::vector<Armor> detect(cv::Mat& image) override;
 

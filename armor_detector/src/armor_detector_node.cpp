@@ -8,6 +8,11 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options) : Node(
     // node settings
     this->debug_ = this->declare_parameter("debug", true);
 
+    // debug process
+    if (this->debug_) {
+        this->createDebugPub();
+    }
+
     // init detector
     try {
         this->detector_ = std::visit(SortBackend(), this->initDetector());
@@ -39,8 +44,33 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options) : Node(
     // armor publisher
     this->armors_pub_ = this->create_publisher<rm_interfaces::msg::Armors>("armor_detector/armors", rclcpp::SensorDataQoS());
 
+    // init armor marker publisher
+    try {
+        // init marker
+        this->armor_marker_.ns = "armors";
+        this->armor_marker_.action = visualization_msgs::msg::Marker::ADD;
+        this->armor_marker_.type = visualization_msgs::msg::Marker::CUBE;
+        this->armor_marker_.scale.x = 0.03;
+        this->armor_marker_.scale.y = 0.15;
+        this->armor_marker_.scale.z = 0.12;
+        this->armor_marker_.color.a = 1.0;
+        this->armor_marker_.color.r = 1.0;
+        this->armor_marker_.lifetime = rclcpp::Duration::from_seconds(0.1);
+
+        // init marker publisher
+        this->markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("armor_detector/marker", 10);
+    } catch (...) {
+        PKA_ERROR("armor_detector", "Initialize Armor Marker Error");
+    }
+
     // image process
     this->image_sub_ = this->create_subscription<sensor_msgs::msg::Image>("image_raw", rclcpp::SensorDataQoS(), std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1));
+
+    // set mode
+    this->set_mode_srv_ = this->create_service<rm_interfaces::srv::SetMode>("armor_detector/set_mode", std::bind(&ArmorDetectorNode::setModeCallback, this, std::placeholders::_1, std::placeholders::_2));
+
+    // heartbeat
+    this->heartbeat_ = HeartBeatPublisher::create(this);
 }
 
 std::variant<std::shared_ptr<Tradition>, std::shared_ptr<YOLO>> ArmorDetectorNode::initDetector() {
@@ -84,7 +114,7 @@ std::variant<std::shared_ptr<Tradition>, std::shared_ptr<YOLO>> ArmorDetectorNod
     
     if (use_yolo) {
         PKA_INFO("armor_detector", "Initialized YOLO Detector Backend");
-        return std::make_shared<YOLO>(model_path.string(), light_params, threshold, fix_points, yolo_conf, nms);
+        return std::make_shared<YOLO>(model_path.string(), light_params, threshold, fix_points, yolo_conf, nms, Color::RED);
     } else {
         PKA_INFO("armor_detector", "Initialized Traditional Detector Backend");
         return std::make_shared<Tradition>(threshold, Color::RED, light_params, armor_params);
@@ -123,6 +153,11 @@ std::shared_ptr<Estimator> ArmorDetectorNode::initEstimator() {
     return estimator;
 }
 
+void ArmorDetectorNode::createDebugPub() {
+    this->binary_pub_ = image_transport::create_publisher(this, "armor_detector/binary_img");
+    this->result_pub_ = image_transport::create_publisher(this, "armor_detector/result_img");
+}
+
 void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg) {
     // get image time stamp
     rclcpp::Time current = img_msg->header.stamp;
@@ -131,19 +166,15 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
     auto image = cv_bridge::toCvShare(img_msg, "rgb8")->image;
 
     // update tf2 relationship
-    try {
-        auto gimbal2odom = this->tf_helper_->lookUpGimbal2Odom(current);
-        auto camera2gimbal = this->tf_helper_->lookUpCamera2Gimbal(current);
+    auto gimbal2odom = this->tf_helper_->lookUpGimbal2Odom(current);
+    auto camera2gimbal = this->tf_helper_->lookUpCamera2Gimbal(current);
 
-        auto R_gimbal2odom = gimbal2odom.R_matrix;
-        auto R_camera2gimbal = camera2gimbal.R_matrix;
-        auto t_gimbal2odom = gimbal2odom.t;
-        auto t_camera2gimbal = camera2gimbal.t;
+    auto R_gimbal2odom = gimbal2odom.R_matrix;
+    auto R_camera2gimbal = camera2gimbal.R_matrix;
+    auto t_gimbal2odom = gimbal2odom.t;
+    auto t_camera2gimbal = camera2gimbal.t;
 
-        this->estimator_->setTFRelationship(R_gimbal2odom, t_gimbal2odom, R_camera2gimbal, t_camera2gimbal);
-    } catch (...) {
-        PKA_ERROR("armor_detector", "Get TF2 relationship error");
-    }
+    this->estimator_->setTFRelationship(R_gimbal2odom, t_gimbal2odom,R_camera2gimbal, t_camera2gimbal);
 
     // detect
     auto armors = this->detector_->detect(image);
@@ -152,10 +183,69 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
     this->classifier_->classify(armors);
 
     // estimate
-    auto armors_msg = this->estimator_->estimate(armors);
+    auto armors_msg_vec = this->estimator_->estimate(armors);
 
+    // mark & build armors msg
+    this->armor_marker_.header.stamp = img_msg->header.stamp;
+    this->armor_marker_.id = 0;
+    rm_interfaces::msg::Armors armors_msg;
+    for (auto& armor_msg : armors_msg_vec) {
+        this->armor_marker_.pose = armor_msg.pose;
+        this->armor_marker_.id++;
+        this->armor_marker_array_.markers.emplace_back(this->armor_marker_);
+        armors_msg.data.emplace_back(armor_msg);
+    }
+    this->armor_marker_.action = armors_msg.data.empty() ? visualization_msgs::msg::Marker::DELETEALL : visualization_msgs::msg::Marker::ADD;
+    armor_marker_array_.markers.emplace_back(this->armor_marker_);
+    this->markers_pub_->publish(armor_marker_array_);
+
+    // publish result image
+    if (this->debug_) {
+        cv::Mat result_img = image.clone();
+        drawArmors(result_img, armors);
+        this->binary_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8").toImageMsg());
+        this->result_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8").toImageMsg());
+    }
+    
     // pub armors info
     this->armors_pub_->publish(armors_msg);
+}
+
+void ArmorDetectorNode::setModeCallback(const std::shared_ptr<rm_interfaces::srv::SetMode::Request> request, std::shared_ptr<rm_interfaces::srv::SetMode::Response> response) {
+    // set response
+    response->success = true;
+    response->message = "0";
+
+    // get mode
+    auto mode = static_cast<VisionMode>(request->mode);
+    auto mode_name = visionModeToString(mode);
+    if (mode_name == "UNKNOWN") {
+        PKA_ERROR("armor_detector", "Set mode error");
+        return;
+    }
+
+    // reset image sub
+    auto createImageSub = [this]() {
+        if (this->image_sub_ == nullptr) {
+            this->image_sub_ = this->create_subscription<sensor_msgs::msg::Image>("image_raw", rclcpp::SensorDataQoS(), std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1));
+        }
+    };
+
+    // switch detect mode
+    switch (mode) {
+        case VisionMode::AUTO_AIM_RED:
+            this->detector_->setDetectColor(Color::RED);
+            createImageSub();
+            PKA_WARN("armor_detector", "Detect color switch to red");
+            break;
+        case VisionMode::AUTO_AIM_BLUE:
+            this->detector_->setDetectColor(Color::BLUE);
+            createImageSub();
+            PKA_WARN("armor_detector", "Detect color switch to blue");
+            break;
+        default:
+            this->image_sub_.reset();
+    }
 }
 
 }

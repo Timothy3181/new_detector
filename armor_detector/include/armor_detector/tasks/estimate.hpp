@@ -37,7 +37,7 @@ public:
     Estimator() = default;
     Estimator(const sensor_msgs::msg::CameraInfo::SharedPtr camera_info, const bool& optimized_yaw, const double& search_range);
     
-    rm_interfaces::msg::Armors estimate(std::vector<Armor>& armors);
+    std::vector<rm_interfaces::msg::Armor> estimate(std::vector<Armor>& armors);
 
     void setTFRelationship(
         Eigen::Matrix3d& R_g2o, Eigen::Vector3d& t_g2o, Eigen::Matrix3d& R_c2g, Eigen::Vector3d& t_c2g);

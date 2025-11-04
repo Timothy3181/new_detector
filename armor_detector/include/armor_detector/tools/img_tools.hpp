@@ -19,6 +19,14 @@ inline void drawArmor(const cv::Mat& src, const Armor& armor) {
     }
 }
 
+inline void drawArmors(const cv::Mat& src, const std::vector<Armor>& armors) {
+    for (const auto& armor : armors) {
+        for (int i = 0; i < 3; i++) {
+            cv::line(src, armor.points[i], armor.points[i + 1], cv::Scalar(0, 255, 0), 1, 8);
+        }
+    }
+}
+
 inline void drawPoint(const cv::Mat& src, const cv::Point2f& p) {
     cv::circle(src, p, 1, cv::Scalar(0, 255, 0));
 }

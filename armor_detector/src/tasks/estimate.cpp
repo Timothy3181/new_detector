@@ -14,9 +14,9 @@ void Estimator::setTFRelationship(Eigen::Matrix3d& R_g2o, Eigen::Vector3d& t_g2o
     this->t_camera2gimbal_ = t_c2g;
 }
 
-rm_interfaces::msg::Armors Estimator::estimate(std::vector<Armor>& armors) {
+std::vector<rm_interfaces::msg::Armor> Estimator::estimate(std::vector<Armor>& armors) {
     // init msg Armors
-    rm_interfaces::msg::Armors armors_msg;
+    std::vector<rm_interfaces::msg::Armor> armors_msg;
     
     // estimate main func
     for (auto& armor : armors) {
@@ -79,7 +79,7 @@ rm_interfaces::msg::Armors Estimator::estimate(std::vector<Armor>& armors) {
         armor_msg.distance_to_image_center = cal2CenterDist(armor.center);
 
         // push back
-        armors_msg.data.emplace_back(armor_msg);
+        armors_msg.emplace_back(armor_msg);
     }
     return armors_msg;
 }
