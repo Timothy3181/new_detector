@@ -54,7 +54,7 @@ private:
     std::shared_ptr<Classifier> initClassifier();
 
     // init estimator backend
-    std::shared_ptr<Estimator> initEstimator();
+    void initEstimator();
 
     // image process callback func
     void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg);
@@ -91,6 +91,7 @@ private:
 
     // settings
     bool debug_;
+    bool use_yolo_;
 };
 
 }

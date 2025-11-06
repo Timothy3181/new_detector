@@ -8,6 +8,9 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options) : Node(
     // node settings
     this->debug_ = this->declare_parameter("debug", true);
 
+    // use yolo switch
+    this->use_yolo_ = this->declare_parameter("use_yolo", false);
+
     // debug process
     if (this->debug_) {
         this->createDebugPub();
@@ -29,7 +32,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options) : Node(
 
     // init estimator
     try {
-        this->estimator_ = initEstimator();
+        this->initEstimator();
     } catch (...) {
         PKA_ERROR("armor_detector", "Initialize Estimator Error");
     }
@@ -78,9 +81,6 @@ std::variant<std::shared_ptr<Tradition>, std::shared_ptr<YOLO>> ArmorDetectorNod
     LightParams light_params;
     ArmorParams armor_params;
 
-    // use yolo switch
-    bool use_yolo = this->declare_parameter("use_yolo", false);
-
     // get light parameters from yaml file
     light_params.min_ratio = this->declare_parameter("light.min_ratio", 0.0001);
     light_params.max_ratio = this->declare_parameter("light.max_ratio", 1.0);
@@ -88,7 +88,7 @@ std::variant<std::shared_ptr<Tradition>, std::shared_ptr<YOLO>> ArmorDetectorNod
     light_params.color_diff_thresh = this->declare_parameter("light.color_diff_thresh", 20);
 
     // get armor parameters from yaml file
-    if (!use_yolo) {
+    if (!this->use_yolo_) {
         armor_params.min_small_center_distance = this->declare_parameter("armor.min_small_center_distance", 0.8);
         armor_params.max_small_center_distance = this->declare_parameter("armor.max_small_center_distance", 3.5);
         armor_params.min_large_center_distance = this->declare_parameter("armor.min_large_center_distance", 3.5);
@@ -112,7 +112,7 @@ std::variant<std::shared_ptr<Tradition>, std::shared_ptr<YOLO>> ArmorDetectorNod
     // yolo detect confidence
     float yolo_conf = this->declare_parameter("yolo.confidence", 0.7);
     
-    if (use_yolo) {
+    if (this->use_yolo_) {
         PKA_INFO("armor_detector", "Initialized YOLO Detector Backend");
         return std::make_shared<YOLO>(model_path.string(), light_params, threshold, fix_points, yolo_conf, nms, Color::RED);
     } else {
@@ -131,12 +131,9 @@ std::shared_ptr<Classifier> ArmorDetectorNode::initClassifier() {
     return std::make_shared<Classifier>(model_path.string(), label_path.string(), threshold, ignore_classes);
 }
 
-std::shared_ptr<Estimator> ArmorDetectorNode::initEstimator() {
-    // init estimator
-    std::shared_ptr<Estimator> estimator;
-
+void ArmorDetectorNode::initEstimator() {
     // get camera info
-    this->cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>("camera_info", rclcpp::SensorDataQoS(), [this, &estimator](sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
+    this->cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>("camera_info", rclcpp::SensorDataQoS(), [this](sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
         // optimize yaw
         bool optimize_yaw = this->declare_parameter("estimator.optimize_yaw", true);
 
@@ -144,13 +141,11 @@ std::shared_ptr<Estimator> ArmorDetectorNode::initEstimator() {
         double search_range = this->declare_parameter("estimator.search_range", 140.0);
 
         // construct
-        estimator = std::make_shared<Estimator>(camera_info, optimize_yaw, search_range);
+        this->estimator_ = std::make_shared<Estimator>(camera_info, optimize_yaw, search_range);
 
         // reset pointer
         this->cam_info_sub_.reset();
     });
-
-    return estimator;
 }
 
 void ArmorDetectorNode::createDebugPub() {
@@ -159,6 +154,12 @@ void ArmorDetectorNode::createDebugPub() {
 }
 
 void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg) {
+    // check if estimator is empty
+    if (this->estimator_ == nullptr) {
+        PKA_ERROR("armor_detector", "Estimator hasn't initialized yet");
+        return;
+    }
+
     // get image time stamp
     rclcpp::Time current = img_msg->header.stamp;
 
@@ -186,6 +187,7 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
     auto armors_msg_vec = this->estimator_->estimate(armors);
 
     // mark & build armors msg
+    this->armor_marker_array_.markers.clear();
     this->armor_marker_.header.stamp = img_msg->header.stamp;
     this->armor_marker_.id = 0;
     rm_interfaces::msg::Armors armors_msg;
@@ -203,8 +205,8 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
     if (this->debug_) {
         cv::Mat result_img = image.clone();
         drawArmors(result_img, armors);
-        this->binary_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8").toImageMsg());
-        this->result_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8").toImageMsg());
+        this->binary_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", this->detector_->binary_img).toImageMsg());
+        this->result_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", result_img).toImageMsg());
     }
     
     // pub armors info

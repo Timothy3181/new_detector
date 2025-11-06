@@ -19,6 +19,8 @@ public:
 
     void setDetectColor(Color color) { this->detect_color = color; }
 
+    cv::Mat binary_img;
+
 protected:
     int threshold;
     LightParams light_params;

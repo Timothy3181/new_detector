@@ -63,12 +63,11 @@ bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
     // to binary
     cv::Mat gray_roi;
     cv::cvtColor(roi, gray_roi, cv::COLOR_RGB2GRAY);
-    cv::Mat fixed_roi;
-    cv::threshold(gray_roi, fixed_roi, this->threshold, 255, cv::THRESH_BINARY);
+    cv::threshold(gray_roi, this->binary_img, this->threshold, 255, cv::THRESH_BINARY);
 
     // find lights
     std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(fixed_roi, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    cv::findContours(this->binary_img, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
     std::vector<Light> lights;
     for (auto& contour : contours) {
         // init light

@@ -18,8 +18,6 @@ public:
     
     std::vector<Armor> detect(cv::Mat& image) override;
 
-    cv::Mat binary_img;
-
 private:
     cv::Mat img_preprocess(cv::Mat& image) noexcept;
     std::vector<Light> findLightBars(cv::Mat& binary_image, cv::Mat& rgb_image) noexcept;
