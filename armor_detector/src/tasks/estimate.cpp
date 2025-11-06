@@ -79,7 +79,7 @@ std::vector<rm_interfaces::msg::Armor> Estimator::estimate(std::vector<Armor>& a
         armor_msg.distance_to_image_center = cal2CenterDist(armor.center);
 
         // push back
-        armors_msg.emplace_back(armor_msg);
+        armors_msg.push_back(std::move(armor_msg));
     }
     return armors_msg;
 }

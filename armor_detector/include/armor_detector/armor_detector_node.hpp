@@ -85,6 +85,7 @@ private:
     // subscribers
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr cam_info_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
+    std::shared_ptr<sensor_msgs::msg::CameraInfo> camera_info_;
 
     // service client
     rclcpp::Service<rm_interfaces::srv::SetMode>::SharedPtr set_mode_srv_;

@@ -129,17 +129,17 @@ std::vector<Armor> Tradition::matchLights(std::vector<Light>& lightbars, cv::Mat
         // if the color is not the enemy color, pass
         if (light_1->color != this->detect_color) continue;
 
-        // max_iter_width：计算出两根灯条可以形成一个装甲板的最大宽度
+        // max_iter_height：计算出两根灯条可以形成一个装甲板的最大宽度
         // max_large_center_distance：大装甲板最大中心距离长宽比
-        double max_iter_width = light_1->width * this->armor_params.max_large_center_distance;
+        double max_iter_height = light_1->height * this->armor_params.max_large_center_distance;
         for (auto light_2 = light_1 + 1; light_2 != lightbars.end(); light_2++) {
             if (light_2->color != this->detect_color) continue;
 
             // containLight judge
             if (this->containLight(light_1 - lightbars.begin(), light_2 - lightbars.begin(), lightbars)) continue;
 
-            // check whether the height is less than the biggest width
-            if (light_2->center.x - light_1->center.x > max_iter_width) break;
+            // check whether the height is less than the biggest height
+            if (light_2->center.x - light_1->center.x > max_iter_height) break;
             auto type = this->check_armor_geometry(*light_1, *light_2);
             if (type != ArmorType::INVALID) {
                 auto armor = Armor(*light_1, *light_2);

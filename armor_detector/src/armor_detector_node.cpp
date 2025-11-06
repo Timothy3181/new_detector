@@ -83,7 +83,7 @@ std::variant<std::shared_ptr<Tradition>, std::shared_ptr<YOLO>> ArmorDetectorNod
 
     // get light parameters from yaml file
     light_params.min_ratio = this->declare_parameter("light.min_ratio", 0.0001);
-    light_params.max_ratio = this->declare_parameter("light.max_ratio", 1.0);
+    light_params.max_ratio = this->declare_parameter("light.max_ratio", 8.0);
     light_params.max_angle = this->declare_parameter("light.max_angle", 40.0);
     light_params.color_diff_thresh = this->declare_parameter("light.color_diff_thresh", 20);
 
@@ -134,6 +134,9 @@ std::shared_ptr<Classifier> ArmorDetectorNode::initClassifier() {
 void ArmorDetectorNode::initEstimator() {
     // get camera info
     this->cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>("camera_info", rclcpp::SensorDataQoS(), [this](sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
+        // storage camera info
+        this->camera_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
+
         // optimize yaw
         bool optimize_yaw = this->declare_parameter("estimator.optimize_yaw", true);
 
@@ -141,7 +144,7 @@ void ArmorDetectorNode::initEstimator() {
         double search_range = this->declare_parameter("estimator.search_range", 140.0);
 
         // construct
-        this->estimator_ = std::make_shared<Estimator>(camera_info, optimize_yaw, search_range);
+        this->estimator_ = std::make_shared<Estimator>(this->camera_info_, optimize_yaw, search_range);
 
         // reset pointer
         this->cam_info_sub_.reset();
@@ -209,10 +212,10 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
     if (this->debug_) {
         cv::Mat result_img = image.clone();
         drawArmors(result_img, armors);
-        this->binary_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", this->detector_->binary_img).toImageMsg());
+        this->binary_pub_.publish(cv_bridge::CvImage(img_msg->header, "mono8", this->detector_->binary_img).toImageMsg());
         this->result_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", result_img).toImageMsg());
     }
-    
+
     // pub armors info
     this->armors_pub_->publish(armors_msg);
 }
