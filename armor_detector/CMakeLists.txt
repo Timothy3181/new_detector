@@ -38,6 +38,11 @@ target_link_libraries(${PROJECT_NAME}
   fmt::fmt
 )
 
+rclcpp_components_register_node(${PROJECT_NAME}
+  PLUGIN pka::detector::ArmorDetectorNode
+  EXECUTABLE armor_detector_node
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights

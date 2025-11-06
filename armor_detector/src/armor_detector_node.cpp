@@ -160,28 +160,32 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
         return;
     }
 
-    // get image time stamp
-    rclcpp::Time current = img_msg->header.stamp;
+    try {
+        // get current time stamp
+        rclcpp::Time current = img_msg->header.stamp;
+
+        // update tf2 relationship
+        auto gimbal2odom = this->tf_helper_->lookUpGimbal2Odom(current);
+        auto camera2gimbal = this->tf_helper_->lookUpCamera2Gimbal(current);
+
+        auto R_gimbal2odom = gimbal2odom.R_matrix;
+        auto R_camera2gimbal = camera2gimbal.R_matrix;
+        auto t_gimbal2odom = gimbal2odom.t;
+        auto t_camera2gimbal = camera2gimbal.t;
+
+        this->estimator_->setTFRelationship(R_gimbal2odom, t_gimbal2odom,R_camera2gimbal, t_camera2gimbal);
+    } catch (...) {
+        return;
+    }
 
     // get cv type image
     auto image = cv_bridge::toCvShare(img_msg, "rgb8")->image;
-
-    // update tf2 relationship
-    auto gimbal2odom = this->tf_helper_->lookUpGimbal2Odom(current);
-    auto camera2gimbal = this->tf_helper_->lookUpCamera2Gimbal(current);
-
-    auto R_gimbal2odom = gimbal2odom.R_matrix;
-    auto R_camera2gimbal = camera2gimbal.R_matrix;
-    auto t_gimbal2odom = gimbal2odom.t;
-    auto t_camera2gimbal = camera2gimbal.t;
-
-    this->estimator_->setTFRelationship(R_gimbal2odom, t_gimbal2odom,R_camera2gimbal, t_camera2gimbal);
 
     // detect
     auto armors = this->detector_->detect(image);
 
     // classify
-    this->classifier_->classify(armors);
+    if (this->use_yolo_) this->classifier_->classify(armors);
 
     // estimate
     auto armors_msg_vec = this->estimator_->estimate(armors);
@@ -251,3 +255,6 @@ void ArmorDetectorNode::setModeCallback(const std::shared_ptr<rm_interfaces::srv
 }
 
 }
+
+#include <rclcpp_components/register_node_macro.hpp>
+RCLCPP_COMPONENTS_REGISTER_NODE(pka::detector::ArmorDetectorNode)
