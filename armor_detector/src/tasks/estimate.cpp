@@ -2,9 +2,9 @@
 
 namespace pka {
 
-Estimator::Estimator(const sensor_msgs::msg::CameraInfo::SharedPtr camera_info, const bool& optimized_yaw, const double& search_range) : optimize_yaw_switch(optimized_yaw), search_range(search_range) {
-    this->camera_matrix_ = cv::Mat(3, 3, CV_64F, const_cast<double *>(camera_info->k.data()));
-    this->distort_coeffs_ = cv::Mat(1, 5, CV_64F, const_cast<double *>(camera_info->d.data()));
+Estimator::Estimator(const sensor_msgs::msg::CameraInfo::SharedPtr& camera_info, const bool& optimized_yaw, const double& search_range, const bool solve_in_camera) : optimize_yaw_switch(optimized_yaw), solve_in_camera(solve_in_camera), search_range(search_range) {
+    this->camera_matrix_ = cv::Mat(3, 3, CV_64F, const_cast<double *>(camera_info->k.data())).clone();
+    this->distort_coeffs_ = cv::Mat(1, 5, CV_64F, const_cast<double *>(camera_info->d.data())).clone();
 }
 
 void Estimator::setTFRelationship(Eigen::Matrix3d& R_g2o, Eigen::Vector3d& t_g2o, Eigen::Matrix3d& R_c2g, Eigen::Vector3d& t_c2g) {
@@ -17,7 +17,7 @@ void Estimator::setTFRelationship(Eigen::Matrix3d& R_g2o, Eigen::Vector3d& t_g2o
 std::vector<rm_interfaces::msg::Armor> Estimator::estimate(std::vector<Armor>& armors) {
     // init msg Armors
     std::vector<rm_interfaces::msg::Armor> armors_msg;
-    
+
     // estimate main func
     for (auto& armor : armors) {
         // select 3-d armor points
@@ -58,6 +58,9 @@ std::vector<rm_interfaces::msg::Armor> Estimator::estimate(std::vector<Armor>& a
         }
 
         // turn rpy to quaternion
+
+        
+
         auto q = rpy2Quaternion(armor.rpy_in_odom);
         auto t = armor.xyz_in_odom;
 

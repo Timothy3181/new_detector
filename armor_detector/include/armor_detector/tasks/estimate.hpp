@@ -35,7 +35,7 @@ const std::vector<cv::Point3f> LARGE_ARMOR_POINTS = {
 class Estimator {
 public:
     Estimator() = default;
-    Estimator(const sensor_msgs::msg::CameraInfo::SharedPtr camera_info, const bool& optimized_yaw, const double& search_range);
+    Estimator(const sensor_msgs::msg::CameraInfo::SharedPtr& camera_info, const bool& optimized_yaw, const double& search_range, const bool solve_in_camera);
     
     std::vector<rm_interfaces::msg::Armor> estimate(std::vector<Armor>& armors);
 
@@ -57,6 +57,7 @@ private:
     Eigen::Vector3d t_camera2gimbal_;
     // switch optimization
     bool optimize_yaw_switch;
+    bool solve_in_camera;
     // optimize search range
     double search_range;
 };

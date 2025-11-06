@@ -111,7 +111,7 @@ std::variant<std::shared_ptr<Tradition>, std::shared_ptr<YOLO>> ArmorDetectorNod
 
     // yolo detect confidence
     float yolo_conf = this->declare_parameter("yolo.confidence", 0.7);
-    
+
     if (this->use_yolo_) {
         PKA_INFO("armor_detector", "Initialized YOLO Detector Backend");
         return std::make_shared<YOLO>(model_path.string(), light_params, threshold, fix_points, yolo_conf, nms, Color::RED);
@@ -143,8 +143,11 @@ void ArmorDetectorNode::initEstimator() {
         // search range
         double search_range = this->declare_parameter("estimator.search_range", 140.0);
 
+        // solve armor pose in camera coordinate
+        bool solve_in_camera = this->declare_parameter("estimator.solve_in_camera", false);
+
         // construct
-        this->estimator_ = std::make_shared<Estimator>(this->camera_info_, optimize_yaw, search_range);
+        this->estimator_ = std::make_shared<Estimator>(this->camera_info_, optimize_yaw, solve_in_camera, search_range);
 
         // reset pointer
         this->cam_info_sub_.reset();
