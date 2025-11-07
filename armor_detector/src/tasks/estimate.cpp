@@ -162,7 +162,7 @@ void Estimator::optimizeYaw(Armor& armor) {
     // init
     Eigen::Vector3d gimbal_rpy = rotationMatrix2RPY(this->R_gimbal2odom_);
     auto yaw0 = limit_rad(gimbal_rpy[2] - (this->search_range / 2) * CV_PI / 180.0);
-    double min_error = 1e10;
+    double min_error = std::numeric_limits<double>::max();
     auto best_yaw = armor.rpy_in_odom[2];
 
     // 迭代法寻找最优yaw
