@@ -2,7 +2,7 @@
 
 namespace pka {
 
-Estimator::Estimator(const sensor_msgs::msg::CameraInfo::SharedPtr& camera_info, const bool& optimized_yaw, const double& search_range, const bool solve_in_camera) : optimize_yaw_switch(optimized_yaw), solve_in_camera(solve_in_camera), search_range(search_range) {
+Estimator::Estimator(const sensor_msgs::msg::CameraInfo::SharedPtr& camera_info, const bool& optimized_yaw, const bool solve_in_camera, const double& search_range) : optimize_yaw_switch(optimized_yaw), solve_in_camera(solve_in_camera), search_range(search_range) {
     this->camera_matrix_ = cv::Mat(3, 3, CV_64F, const_cast<double *>(camera_info->k.data())).clone();
     this->distort_coeffs_ = cv::Mat(1, 5, CV_64F, const_cast<double *>(camera_info->d.data())).clone();
 }
@@ -129,12 +129,12 @@ double Estimator::armorReprojectionError(const Armor& armor, double yaw) {
     auto cos_pitch = std::cos(pitch);
     auto sin_pitch = std::sin(pitch);
 
-    Eigen::Matrix3d yaw_rotation_matrix = Eigen::Matrix3d::Identity();
-    yaw_rotation_matrix << cos_yaw, -sin_yaw, 0, sin_yaw, cos_yaw, 0, 0, 0, 1;
-    Eigen::Matrix3d pitch_rotation_matrix = Eigen::Matrix3d::Identity();
-    pitch_rotation_matrix << cos_pitch, 0, sin_pitch, 0, 1, 0, -sin_pitch, 0, cos_pitch;
+    const Eigen::Matrix3d R_armor2odom_fix {
+        {cos_yaw * cos_pitch, -sin_yaw, cos_yaw * sin_pitch},
+        {sin_yaw * cos_pitch,  cos_yaw, sin_yaw * sin_pitch},
+        {         -sin_pitch,        0,           cos_pitch}
+    };
 
-    Eigen::Matrix3d R_armor2odom_fix = yaw_rotation_matrix * pitch_rotation_matrix;
     Eigen::Matrix3d R_armor2camera_fix = this->R_camera2gimbal_.transpose() * this->R_gimbal2odom_.transpose() * R_armor2odom_fix;
     cv::Mat R_armor2camera_cv;
     cv::eigen2cv(R_armor2camera_fix, R_armor2camera_cv);
