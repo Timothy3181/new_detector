@@ -126,7 +126,7 @@ std::shared_ptr<Classifier> ArmorDetectorNode::initClassifier() {
     auto model_path = URLResolver::getResolvedPath("package://armor_detector/model/lenet.onnx");
     auto label_path = URLResolver::getResolvedPath("package://armor_detector/model/label.txt");
     double threshold = this->declare_parameter("classifier.confidence", 0.7);
-    std::vector<std::string> ignore_classes = this->declare_parameter("ignore_classes", std::vector<std::string>{"negative"});
+    std::vector<std::string> ignore_classes = this->declare_parameter("classifier.ignore_classes", std::vector<std::string>{"negative"});
 
     return std::make_shared<Classifier>(model_path.string(), label_path.string(), threshold, ignore_classes);
 }

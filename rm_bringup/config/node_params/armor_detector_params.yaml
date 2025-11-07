@@ -1,0 +1,37 @@
+/**:
+  ros__parameters:
+    # settings
+    debug: true
+    use_yolo: false
+
+    # light
+    light.min_ratio: 0.0001
+    light.max_ratio: 8.0
+    light.max_angle: 40.0
+    light.color_diff_thresh: 20
+
+    # armor
+    armor.min_light_ratio: 0.8
+    armor.min_small_center_distance: 0.8
+    armor.max_small_center_distance: 3.5
+    armor.min_large_center_distance: 3.5
+    armor.max_large_center_distance: 8.0
+    armor.max_angle: 35.0
+
+    # binary image
+    binary_threshold: 90
+
+    # yolo
+    yolo.fix_points: true
+    yolo.nms_threshold: 0.45
+    yolo.confidence: 0.7
+
+    # classfier
+    classifier.confidence: 0.7
+    classifier.ignore_classes: ["negative"]
+
+    # estimator
+    estimator.optimize_yaw: true
+    estimator.search_range: 140.0
+    estimator.solve_in_camera: false
+
