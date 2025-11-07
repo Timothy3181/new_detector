@@ -24,7 +24,7 @@ public:
 
 private:
     // fix points
-    bool fixPoints(Armor& armor, cv::Mat& image);
+    bool fixPoints(Armor& armor, const cv::Mat& image);
 
     // inference
     ov::Core core;

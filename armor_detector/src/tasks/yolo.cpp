@@ -25,7 +25,7 @@ YOLO::YOLO(const std::string& model_path, const LightParams& light_params, const
     this->detect_color = color;
 }
 
-bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
+bool YOLO::fixPoints(Armor& armor, const cv::Mat& image) {
     // cal new four points
     auto tl = armor.points[0];
     auto tr = armor.points[1];
@@ -80,20 +80,24 @@ bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
         }
     }
 
+    // sort the lights
+    std::sort(lights.begin(), lights.end(), [](const Light& a, const Light& b) { return a.center.x < b.center.x; });
+
+    // find true lights
     float min_left_light_dist = std::numeric_limits<float>::max();
     float min_right_light_dist = std::numeric_limits<float>::max();
     Light selected_left;
     Light selected_right;
     for (auto& light : lights)  {
         // select available light
-        auto left_dist_error = cv::norm(light.center - armor.left.center);
+        auto left_dist_error = cv::norm(armor.left.center - (light.center + cv::Point2f(rect.x, rect.y)));
         // left light
         if (left_dist_error < min_left_light_dist) {
             selected_left = light;
             min_left_light_dist = left_dist_error;
         }
         // right light
-        auto right_dist_error = cv::norm(light.center - armor.right.center);
+        auto right_dist_error = cv::norm(armor.right.center - (light.center + cv::Point2f(rect.x, rect.y)));
         if (right_dist_error < min_right_light_dist) {
             selected_right = light;
             min_right_light_dist = right_dist_error;
@@ -101,15 +105,15 @@ bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
     }
 
     // fix key points
-    std::vector<cv::Point2f> fix_points = {
-        (selected_left.top + cv::Point2f(rect.x, rect.y)), 
-        (selected_right.top + cv::Point2f(rect.x, rect.y)), 
-        (selected_right.bottom + cv::Point2f(rect.x, rect.y)), 
-        (selected_left.bottom + cv::Point2f(rect.x, rect.y))
-    };
-    armor.points = fix_points;
+    if (min_left_light_dist + min_right_light_dist < 15) {
+        armor.points[0] = selected_left.top + cv::Point2f(rect.x, rect.y);
+        armor.points[1] = selected_right.top + cv::Point2f(rect.x, rect.y);
+        armor.points[2] = selected_right.bottom + cv::Point2f(rect.x, rect.y);
+        armor.points[3] = selected_left.bottom + cv::Point2f(rect.x, rect.y);
+        return true;
+    }
     
-    return true;
+    return false;
 }
 
 std::vector<Armor> YOLO::detect(cv::Mat& image) {
