@@ -83,10 +83,9 @@ std::vector<rm_interfaces::msg::Armor> Estimator::estimate(std::vector<Armor>& a
             armor_msg.distance_to_image_center = cal2CenterDist(armor.center);
         } else {
             // in camera
-            Eigen::Quaterniond q_armor2odom(q.toRotationMatrix());
-            Eigen::Quaterniond q_gimbal2odom(this->R_gimbal2odom_); 
-            Eigen::Quaterniond q_camera2gimbal(this->R_camera2gimbal_);
-            Eigen::Quaterniond q_camera = q_armor2odom * q_gimbal2odom.inverse() * q_camera2gimbal.inverse();
+            Eigen::Matrix3d R_armor2odom = q.toRotationMatrix();
+            Eigen::Matrix3d R_armor2camera = this->R_camera2gimbal_.transpose() * this->R_gimbal2odom_.transpose() * R_armor2odom;
+            Eigen::Quaterniond q_camera(R_armor2camera);
             auto t_camera = armor.xyz_in_camera;
             // type 
             armor_msg.type = armor.type_name;
@@ -126,7 +125,7 @@ double Estimator::armorReprojectionError(const Armor& armor, double yaw) {
     // rvec
     auto cos_yaw = std::cos(yaw);
     auto sin_yaw = std::sin(yaw);
-    double pitch = (armor.symbol == Symbol::OUTPOST) ? -15.0 : 15.0;
+    double pitch = (armor.symbol == Symbol::OUTPOST) ? -15.0 * CV_PI / 180.0 : 15.0 * CV_PI / 180.0;
     auto cos_pitch = std::cos(pitch);
     auto sin_pitch = std::sin(pitch);
 
@@ -143,7 +142,8 @@ double Estimator::armorReprojectionError(const Armor& armor, double yaw) {
     cv::Rodrigues(R_armor2camera_cv, rvec);
 
     // tvec
-    cv::Vec3d tvec(armor.xyz_in_camera[0], armor.xyz_in_camera[1], armor.xyz_in_camera[2]);
+    const Eigen::Vector3d t_armor2camera = armor.xyz_in_camera;
+    cv::Vec3d tvec(t_armor2camera[0], t_armor2camera[1], t_armor2camera[2]);
 
     // inverse pnp
     cv::projectPoints(object_points, rvec, tvec, this->camera_matrix_, this->distort_coeffs_, two_dimension_points);
