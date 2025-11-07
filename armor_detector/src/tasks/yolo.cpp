@@ -26,29 +26,26 @@ YOLO::YOLO(const std::string& model_path, const LightParams& light_params, const
 }
 
 bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
-    // get 4 key points
-    auto lt = armor.points.at(0);
-    auto rt = armor.points.at(1);
-    auto rb = armor.points.at(2);
-    auto lb = armor.points.at(3);
-
-    // get l & f center
-    auto lc = (lt + lb) / 2;
-    auto rc = (rt + rb) / 2;
-
-    // image geometry calculation
-    auto c = armor.center;
-    auto lt2c = c - lt;
-    auto lb2c = c - lb;
-    auto rt2c = c - rt;
-    auto rb2c = c - rb;
-    auto nlt = lt - 0.35 * lt2c;
-    auto nlb = lb - 0.35 * lb2c;
-    auto nrt = rt - 0.35 * rt2c;
-    auto nrb = rb - 0.35 * rb2c;
+    // cal new four points
+    auto tl = armor.points[0];
+    auto tr = armor.points[1];
+    auto br = armor.points[2];
+    auto bl = armor.points[3];
+    auto lt2b = bl - tl;
+    auto rt2b = br - tr;
+    auto tl1 = (tl + bl) / 2 - lt2b;
+    auto bl1 = (tl + bl) / 2 + lt2b;
+    auto br1 = (tr + br) / 2 + rt2b;
+    auto tr1 = (tr + br) / 2 - rt2b;
+    auto tl2tr = tr1 - tl1;
+    auto bl2br = br1 - bl1;
+    auto tl2 = (tl1 + tr) / 2 - 0.75 * tl2tr;
+    auto tr2 = (tl1 + tr) / 2 + 0.75 * tl2tr;
+    auto bl2 = (bl1 + br) / 2 - 0.75 * bl2br;
+    auto br2 = (bl1 + br) / 2 + 0.75 * bl2br;
 
     // get roi
-    std::vector<cv::Point2f> n_points = {nlt, nrt, nrb, nlb};
+    std::vector<cv::Point2f> n_points = {tl2, tr2, bl2, br2};
     auto rrect = cv::minAreaRect(n_points);
     cv::Rect rect = rrect.boundingRect();
 
@@ -89,14 +86,14 @@ bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
     Light selected_right;
     for (auto& light : lights)  {
         // select available light
-        auto left_dist_error = cv::norm(light.center - lc);
+        auto left_dist_error = cv::norm(light.center - armor.left.center);
         // left light
         if (left_dist_error < min_left_light_dist) {
             selected_left = light;
             min_left_light_dist = left_dist_error;
         }
         // right light
-        auto right_dist_error = cv::norm(light.center - rc);
+        auto right_dist_error = cv::norm(light.center - armor.right.center);
         if (right_dist_error < min_right_light_dist) {
             selected_right = light;
             min_right_light_dist = right_dist_error;
@@ -105,7 +102,10 @@ bool YOLO::fixPoints(Armor& armor, cv::Mat& image) {
 
     // fix key points
     std::vector<cv::Point2f> fix_points = {
-        selected_left.top, selected_right.top, selected_right.bottom, selected_left.bottom
+        (selected_left.top + cv::Point2f(rect.x, rect.y)), 
+        (selected_right.top + cv::Point2f(rect.x, rect.y)), 
+        (selected_right.bottom + cv::Point2f(rect.x, rect.y)), 
+        (selected_left.bottom + cv::Point2f(rect.x, rect.y))
     };
     armor.points = fix_points;
     

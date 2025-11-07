@@ -58,28 +58,51 @@ std::vector<rm_interfaces::msg::Armor> Estimator::estimate(std::vector<Armor>& a
         }
 
         // turn rpy to quaternion
-
-        
-
         auto q = rpy2Quaternion(armor.rpy_in_odom);
         auto t = armor.xyz_in_odom;
 
         // init armor msg
         rm_interfaces::msg::Armor armor_msg;
-        // type
-        armor_msg.type = armor.type_name;
-        // symbol
-        armor_msg.number = armor.symbol_name;
-        // pose
-        armor_msg.pose.position.x = t[0];
-        armor_msg.pose.position.y = t[1];
-        armor_msg.pose.position.z = t[2];
-        armor_msg.pose.orientation.w = q.w();
-        armor_msg.pose.orientation.x = q.x();
-        armor_msg.pose.orientation.y = q.y();
-        armor_msg.pose.orientation.z = q.z();
-        // to center dist
-        armor_msg.distance_to_image_center = cal2CenterDist(armor.center);
+
+        // send in camera or odom
+        if (!this->solve_in_camera) {
+            // in odom
+            // type
+            armor_msg.type = armor.type_name;
+            // symbol
+            armor_msg.number = armor.symbol_name;
+            // pose
+            armor_msg.pose.position.x = t[0];
+            armor_msg.pose.position.y = t[1];
+            armor_msg.pose.position.z = t[2];
+            armor_msg.pose.orientation.w = q.w();
+            armor_msg.pose.orientation.x = q.x();
+            armor_msg.pose.orientation.y = q.y();
+            armor_msg.pose.orientation.z = q.z();
+            // to center dist
+            armor_msg.distance_to_image_center = cal2CenterDist(armor.center);
+        } else {
+            // in camera
+            Eigen::Quaterniond q_armor2odom(q.toRotationMatrix());
+            Eigen::Quaterniond q_gimbal2odom(this->R_gimbal2odom_); 
+            Eigen::Quaterniond q_camera2gimbal(this->R_camera2gimbal_);
+            Eigen::Quaterniond q_camera = q_armor2odom * q_gimbal2odom.inverse() * q_camera2gimbal.inverse();
+            auto t_camera = armor.xyz_in_camera;
+            // type 
+            armor_msg.type = armor.type_name;
+            // symbol
+            armor_msg.number = armor.symbol_name;
+            // pose
+            armor_msg.pose.position.x = t_camera[0];
+            armor_msg.pose.position.y = t_camera[1];
+            armor_msg.pose.position.z = t_camera[2];
+            armor_msg.pose.orientation.w = q_camera.w();
+            armor_msg.pose.orientation.x = q_camera.x();
+            armor_msg.pose.orientation.y = q_camera.y();
+            armor_msg.pose.orientation.z = q_camera.z();
+            // to center dist
+            armor_msg.distance_to_image_center = cal2CenterDist(armor.center);
+        }
 
         // push back
         armors_msg.push_back(std::move(armor_msg));
