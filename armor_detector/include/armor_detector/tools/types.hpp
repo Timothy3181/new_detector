@@ -19,8 +19,8 @@ namespace pka {
 constexpr int NOT_DEFINE = -255;
 
 enum class Color {
-    RED = 0,
-    BLUE = 1,
+    BLUE = 0,
+    RED = 1,
     WHITE = 2,
     PURPLE = 3
 };

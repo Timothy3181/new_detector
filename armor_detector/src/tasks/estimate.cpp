@@ -53,7 +53,7 @@ std::vector<rm_interfaces::msg::Armor> Estimator::estimate(std::vector<Armor>& a
         // optimize yaw
         bool is_balance = (armor.type == ArmorType::LARGE) && 
             (armor.symbol == Symbol::INFANTRY_3 || armor.symbol == Symbol::INFANTRY_4 || armor.symbol == Symbol::INFANTRY_5);
-        if (is_balance && this->optimize_yaw_switch) {
+        if (!is_balance && this->optimize_yaw_switch) {
             this->optimizeYaw(armor);
         }
 
