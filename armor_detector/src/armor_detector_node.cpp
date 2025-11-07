@@ -191,7 +191,7 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
     auto armors = this->detector_->detect(image);
 
     // classify
-    if (this->use_yolo_) this->classifier_->classify(armors);
+    if (!this->use_yolo_) this->classifier_->classify(armors);
 
     // estimate
     auto armors_msg_vec = this->estimator_->estimate(armors);
